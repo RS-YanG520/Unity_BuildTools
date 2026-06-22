@@ -202,6 +202,13 @@ namespace BuildTools
         [Tooltip("预览线的颜色（未闭合时从最后一个顶点到鼠标位置）")]
         public Color previewLineColor = new Color(1f, 1f, 1f, 0.4f);
 
+        [Tooltip("启用圆角转折")]
+        public bool useRoundedCorners = false;
+
+        [Tooltip("圆角半径（0 = 直角）")]
+        [Min(0f)]
+        public float cornerRadius = 1f;
+
         // --------------------------------------------------------
         // Scene Settings
         // --------------------------------------------------------
@@ -224,6 +231,8 @@ namespace BuildTools
             pointHandleColor = Color.green;
             pointHandleSize = 0.3f;
             previewLineColor = new Color(1f, 1f, 1f, 0.4f);
+            useRoundedCorners = false;
+            cornerRadius = 1f;
         }
     }
 

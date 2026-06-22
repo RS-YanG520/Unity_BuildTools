@@ -944,6 +944,30 @@ namespace BuildTools
                     EditorUtility.SetDirty(m_settings);
                 }
 
+                EditorGUILayout.Space(2f);
+
+                // 圆角转折
+                EditorGUI.BeginChangeCheck();
+                bool newRounded = EditorGUILayout.Toggle("圆角转折", m_settings.useRoundedCorners);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    RegisterSettingsUndo();
+                    m_settings.useRoundedCorners = newRounded;
+                    EditorUtility.SetDirty(m_settings);
+                }
+
+                if (m_settings.useRoundedCorners)
+                {
+                    EditorGUI.BeginChangeCheck();
+                    float newRadius = EditorGUILayout.FloatField("圆角半径", m_settings.cornerRadius);
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        RegisterSettingsUndo();
+                        m_settings.cornerRadius = Mathf.Max(0f, newRadius);
+                        EditorUtility.SetDirty(m_settings);
+                    }
+                }
+
                 EditorGUI.BeginChangeCheck();
                 LayerMask newMask = EditorGUILayout.MaskField("射线检测图层", (int)m_settings.paintLayers,
                     UnityEditorInternal.InternalEditorUtility.layers);
@@ -1347,6 +1371,12 @@ namespace BuildTools
 
         private void DrawPolygonEdges()
         {
+            if (m_settings.useRoundedCorners && m_settings.cornerRadius > 0.001f)
+            {
+                DrawRoundedPolygonEdges();
+                return;
+            }
+
             int n = m_settings.polygonPoints.Count;
             if (n < 2) return;
 
@@ -1361,9 +1391,181 @@ namespace BuildTools
             // 闭合边（最后一个顶点到第一个顶点）
             if (m_settings.isPolygonClosed && n >= 2)
             {
-                // 使用稍微不同的线宽来区分闭合边
                 Handles.DrawAAPolyLine(4f, m_settings.polygonPoints[n - 1], m_settings.polygonPoints[0]);
             }
+        }
+
+        /// <summary>
+        /// 绘制带圆角转折的多边形边线。
+        /// 在每个顶点处用圆弧替代尖角，半径受相邻边长约束。
+        /// </summary>
+        private void DrawRoundedPolygonEdges()
+        {
+            int n = m_settings.polygonPoints.Count;
+            if (n < 2) return;
+
+            List<Vector3> pts = m_settings.polygonPoints;
+            bool closed = m_settings.isPolygonClosed;
+            float r = m_settings.cornerRadius;
+
+            Handles.color = m_settings.polygonOutlineColor;
+
+            // 为每个顶点预计算圆角数据：切线点 T_before / T_after、圆弧圆心、半径
+            var corners = new (bool valid, Vector3 T_before, Vector3 T_after, Vector3 arcCenter, float arcR)[n];
+            for (int i = 0; i < n; i++)
+            {
+                if (closed || (i > 0 && i < n - 1)) // 仅内部顶点/闭合多边形的所有顶点
+                {
+                    int prev = (i - 1 + n) % n;
+                    int next = (i + 1) % n;
+
+                    Vector3 dIn = XZNormalized(pts[i] - pts[prev]);   // 入边方向（指向顶点）
+                    Vector3 dOut = XZNormalized(pts[next] - pts[i]); // 出边方向（离开顶点）
+
+                    // 限制半径不超过相邻边的一半
+                    float maxR = Mathf.Min(
+                        XZDistance(pts[prev], pts[i]) * 0.5f,
+                        XZDistance(pts[i], pts[next]) * 0.5f);
+                    float clampedR = Mathf.Min(r, maxR);
+
+                    if (clampedR > 0.001f)
+                    {
+                        // 根据转弯方向确定法向（左转→弧在左侧，右转→弧在右侧）
+                        // 2D cross: dIn.x * dOut.z - dIn.z * dOut.x
+                        float cross = dIn.x * dOut.z - dIn.z * dOut.x;
+
+                        Vector3 nIn, nOut;
+                        if (cross > 0.0001f) // 左转 → 逆时针法向
+                        {
+                            nIn  = new Vector3(-dIn.z,  0f, dIn.x);
+                            nOut = new Vector3(-dOut.z, 0f, dOut.x);
+                        }
+                        else if (cross < -0.0001f) // 右转 → 顺时针法向
+                        {
+                            nIn  = new Vector3(dIn.z,  0f, -dIn.x);
+                            nOut = new Vector3(dOut.z, 0f, -dOut.x);
+                        }
+                        else // 共线，无需圆角
+                        {
+                            continue;
+                        }
+
+                        // 偏移线交点 = 圆弧圆心
+                        // 入边偏移线: O = pts[i] - dIn * clampedR + nIn * clampedR + dIn * t  ...
+                        // 实际: O = pts[i] + dIn * t_in + nIn * clampedR
+                        //        O = pts[i] + dOut * t_out + nOut * clampedR
+                        // 其中 t_in, t_out 是未知参数
+                        Vector3 P_in = pts[i] + nIn * clampedR;
+                        Vector3 P_out = pts[i] + nOut * clampedR;
+
+                        // 求交点: P_in + dIn * t = P_out + dOut * s
+                        if (TryLineIntersectXZ(P_in, dIn, P_out, dOut, out Vector3 arcCenter, out float _, out float _))
+                        {
+                            Vector3 T_before = archCenter - nIn * clampedR;
+                            Vector3 T_after = arcCenter - nOut * clampedR;
+
+                            corners[i] = (true, T_before, T_after, arcCenter, clampedR);
+                        }
+                    }
+                }
+            }
+
+            // 绘制线段 + 圆弧
+            int edgeCount = closed ? n : n - 1;
+            for (int i = 0; i < edgeCount; i++)
+            {
+                int curr = i;
+                int next = (i + 1) % n;
+
+                // 从上一顶点弧的终点（若无弧则为顶点本身）
+                Vector3 segStart = corners[curr].valid ? corners[curr].T_after : pts[curr];
+                // 到下一顶点弧的起点（若无弧则为顶点本身）
+                Vector3 segEnd = corners[next].valid ? corners[next].T_before : pts[next];
+
+                // 绘制直线段（确保不反向）
+                if (Vector3.Dot(XZNormalized(segEnd - segStart), XZNormalized(pts[next] - pts[curr])) >= 0f
+                    && XZSqrDistance(segStart, segEnd) > 0.0001f)
+                {
+                    Handles.DrawAAPolyLine(4f, segStart, segEnd);
+                }
+
+                // 在 next 顶点处绘制圆弧
+                if (corners[next].valid)
+                {
+                    var c = corners[next];
+                    DrawWireArcXZ(c.arcCenter, c.arcR, c.T_before, c.T_after);
+                }
+            }
+        }
+
+        // ============================================================
+        // 圆角辅助方法
+        // ============================================================
+
+        /// <summary>XZ 平面上点到点的距离</summary>
+        private static float XZDistance(Vector3 a, Vector3 b)
+        {
+            float dx = a.x - b.x;
+            float dz = a.z - b.z;
+            return Mathf.Sqrt(dx * dx + dz * dz);
+        }
+
+        private static float XZSqrDistance(Vector3 a, Vector3 b)
+        {
+            float dx = a.x - b.x;
+            float dz = a.z - b.z;
+            return dx * dx + dz * dz;
+        }
+
+        /// <summary>XZ 平面上的单位方向（忽略 Y）</summary>
+        private static Vector3 XZNormalized(Vector3 v)
+        {
+            Vector3 flat = new Vector3(v.x, 0f, v.z);
+            float mag = flat.magnitude;
+            return mag > 0.0001f ? flat / mag : Vector3.forward;
+        }
+
+        /// <summary>XZ 平面上旋转 90° 的垂直向量</summary>
+        private static Vector3 XZPerp(Vector3 v)
+        {
+            return new Vector3(v.z, 0f, -v.x);
+        }
+
+        /// <summary>
+        /// 求 XZ 平面上两条线的交点：P1 + s*D1 = P2 + t*D2
+        /// </summary>
+        private static bool TryLineIntersectXZ(Vector3 P1, Vector3 D1, Vector3 P2, Vector3 D2,
+            out Vector3 intersection, out float s, out float t)
+        {
+            // 2D cross product: D1.x * D2.z - D1.z * D2.x
+            float cross = D1.x * D2.z - D1.z * D2.x;
+            if (Mathf.Abs(cross) < 0.0001f)
+            {
+                intersection = Vector3.zero;
+                s = t = 0f;
+                return false;
+            }
+
+            Vector3 delta = P2 - P1;
+            s = (delta.x * D2.z - delta.z * D2.x) / cross;
+            t = (delta.x * D1.z - delta.z * D1.x) / cross;
+
+            intersection = P1 + s * D1;
+            // Y 取两个起点的平均值
+            intersection.y = (P1.y + P2.y) * 0.5f;
+            return true;
+        }
+
+        /// <summary>在 XZ 平面上绘制圆弧（Scene View handles）</summary>
+        private static void DrawWireArcXZ(Vector3 center, float radius, Vector3 fromPoint, Vector3 toPoint)
+        {
+            Vector3 fromDir = XZNormalized(fromPoint - center);
+            Vector3 toDir = XZNormalized(toPoint - center);
+            float angle = Vector3.SignedAngle(fromDir, toDir, Vector3.up);
+
+            if (Mathf.Abs(angle) < 0.01f) return;
+
+            Handles.DrawWireArc(center, Vector3.up, fromDir, angle, radius);
         }
 
         private void DrawPreviewLine()
