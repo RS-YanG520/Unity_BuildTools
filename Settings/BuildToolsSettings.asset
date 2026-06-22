@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5bb0126a9bf16d4e93f276da7852c6d, type: 3}
+  m_Name: BuildToolsSettings
+  m_EditorClassIdentifier: 
+  polygonPoints:
+  - {x: -68.98651, y: 0, z: -83.20961}
+  - {x: 117.87186, y: 0, z: -20.975708}
+  - {x: 140.14937, y: 0, z: -100.85146}
+  - {x: -45.53363, y: 0, z: -213.4967}
+  isPolygonClosed: 1
+  prefabSlots:
+  - prefab: {fileID: 4438044692216399284, guid: c6df5acf8dc85e04eab718701b791da9, type: 3}
+    weight: 1
+    enabled: 1
+  placement:
+    placementMode: 2
+    buildingCount: 16
+    spacing: 0
+    randomSeed: 358867
+    edgeOffset: 0
+    minSpacing: 0
+    orientationMode: 1
+    worldDirection: {x: 0, y: 0, z: 1}
+    edgeRotationOffset: -90
+    edgeAlignment: 0
+    randomizeRotation: 0
+    randomRotationRange: 15
+    overwriteLayer: 0
+    placeLayer: 0
+    groupPrefabs: 1
+    groupName: _Buildings
+  polygonOutlineColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  polygonFillColor: {r: 1, g: 1, b: 0, a: 0.15}
+  pointHandleColor: {r: 0, g: 1, b: 0, a: 1}
+  pointHandleSize: 0.3
+  previewLineColor: {r: 1, g: 1, b: 1, a: 0.4}
+  paintLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
