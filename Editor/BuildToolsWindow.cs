@@ -1411,7 +1411,7 @@ namespace BuildTools
             Handles.color = m_settings.polygonOutlineColor;
 
             // 使用与放置算法共享的圆角计算
-            List<BuildToolsPlacement.CornerTangentInfo> corners =
+            List<CornerTangentInfo> corners =
                 BuildToolsPlacement.ComputeCornerTangents(pts, closed, m_settings.cornerRadius);
 
             // 绘制线段 + 圆弧
