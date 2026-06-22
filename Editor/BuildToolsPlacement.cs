@@ -39,6 +39,18 @@ namespace BuildTools
     // ============================================================
 
     /// <summary>
+    /// 圆角切线计算结果（弧与直线的连接点）
+    /// </summary>
+    public struct CornerTangentInfo
+    {
+        public bool valid;
+        public Vector3 T_before;  // 入边上的切点（弧起点）
+        public Vector3 T_after;   // 出边上的切点（弧终点）
+        public Vector3 arcCenter;
+        public float radius;
+    }
+
+    /// <summary>
     /// 建筑放置算法 —— 沿多边形边缘随机分布 Prefab
     /// </summary>
     public static class BuildToolsPlacement
@@ -53,14 +65,15 @@ namespace BuildTools
             bool isClosed,
             PlacementSettings settings,
             System.Random rng,
-            List<PrefabSlot> prefabSlots = null)
+            List<PrefabSlot> prefabSlots = null,
+            float cornerRadius = 0f)
         {
             // 验证输入（开放或闭合均可，至少 2 个点 = 1 条边）
             if (polygonPoints == null || polygonPoints.Count < 2)
                 return new List<PlacementResult>();
 
-            // 构建边列表
-            List<PolygonEdge> edges = BuildEdgeList(polygonPoints, isClosed);
+            // 构建边列表（支持圆角收缩）
+            List<PolygonEdge> edges = BuildEdgeList(polygonPoints, isClosed, cornerRadius);
             if (edges.Count == 0)
                 return new List<PlacementResult>();
 
@@ -460,7 +473,149 @@ namespace BuildTools
         /// <summary>
         /// 从顶点列表构建边列表，包含内向法线等衍生数据
         /// </summary>
-        private static List<PolygonEdge> BuildEdgeList(List<Vector3> points, bool isClosed)
+        // ============================================================
+        // 圆角切线计算（与窗口渲染共享数学逻辑）
+        // ============================================================
+
+        /// <summary>为多边形顶点计算圆角切线点</summary>
+        public static List<CornerTangentInfo> ComputeCornerTangents(
+            List<Vector3> points, bool isClosed, float cornerRadius)
+        {
+            int n = points.Count;
+            var corners = new List<CornerTangentInfo>(n);
+            for (int i = 0; i < n; i++)
+                corners.Add(new CornerTangentInfo());
+
+            if (cornerRadius < 0.001f || n < 3) return corners;
+
+            for (int i = 0; i < n; i++)
+            {
+                // 非闭合多边形首尾不加圆角
+                if (!isClosed && (i == 0 || i == n - 1)) continue;
+
+                int prev = (i - 1 + n) % n;
+                int next = (i + 1) % n;
+
+                Vector3 dIn  = XZNormalized_Prv(points[i] - points[prev]);
+                Vector3 dOut = XZNormalized_Prv(points[next] - points[i]);
+
+                float maxR = Mathf.Min(
+                    XZDistance_Prv(points[prev], points[i]) * 0.5f,
+                    XZDistance_Prv(points[i], points[next]) * 0.5f);
+                float clampedR = Mathf.Min(cornerRadius, maxR);
+                if (clampedR < 0.001f) continue;
+
+                // 根据转弯方向确定法向
+                float cross = dIn.x * dOut.z - dIn.z * dOut.x;
+                Vector3 nIn, nOut;
+                if (cross > 0.0001f)
+                {
+                    nIn  = new Vector3(-dIn.z,  0f, dIn.x);
+                    nOut = new Vector3(-dOut.z, 0f, dOut.x);
+                }
+                else if (cross < -0.0001f)
+                {
+                    nIn  = new Vector3(dIn.z,  0f, -dIn.x);
+                    nOut = new Vector3(dOut.z, 0f, -dOut.x);
+                }
+                else continue;
+
+                Vector3 P_in  = points[i] + nIn  * clampedR;
+                Vector3 P_out = points[i] + nOut * clampedR;
+
+                if (TryLineIntersectXZ_Prv(P_in, dIn, P_out, dOut, out Vector3 center, out _, out _))
+                {
+                    corners[i] = new CornerTangentInfo
+                    {
+                        valid = true,
+                        T_before  = center - nIn  * clampedR,
+                        T_after   = center - nOut * clampedR,
+                        arcCenter = center,
+                        radius    = clampedR
+                    };
+                }
+            }
+            return corners;
+        }
+
+        private static float XZDistance_Prv(Vector3 a, Vector3 b)
+        {
+            float dx = a.x - b.x;
+            float dz = a.z - b.z;
+            return Mathf.Sqrt(dx * dx + dz * dz);
+        }
+
+        private static Vector3 XZNormalized_Prv(Vector3 v)
+        {
+            Vector3 flat = new Vector3(v.x, 0f, v.z);
+            float mag = flat.magnitude;
+            return mag > 0.0001f ? flat / mag : Vector3.forward;
+        }
+
+        private static bool TryLineIntersectXZ_Prv(Vector3 P1, Vector3 D1, Vector3 P2, Vector3 D2,
+            out Vector3 intersection, out float s, out float t)
+        {
+            float cross = D1.x * D2.z - D1.z * D2.x;
+            if (Mathf.Abs(cross) < 0.0001f)
+            {
+                intersection = Vector3.zero;
+                s = t = 0f;
+                return false;
+            }
+            Vector3 delta = P2 - P1;
+            s = (delta.x * D2.z - delta.z * D2.x) / cross;
+            t = (delta.x * D1.z - delta.z * D1.x) / cross;
+            intersection = P1 + s * D1;
+            intersection.y = (P1.y + P2.y) * 0.5f;
+            return true;
+        }
+
+        // ============================================================
+        // Internal: Edge Calculation
+        // ============================================================
+
+        private static List<PolygonEdge> BuildEdgeList(List<Vector3> points, bool isClosed, float cornerRadius = 0f)
+        {
+            // 先用原始顶点构建边列表
+            List<PolygonEdge> edges = BuildEdgeListRaw(points, isClosed);
+            if (edges.Count == 0) return edges;
+
+            if (cornerRadius < 0.001f || points.Count < 3) return edges;
+
+            // 计算圆角切线
+            List<CornerTangentInfo> corners = ComputeCornerTangents(points, isClosed, cornerRadius);
+            int n = points.Count;
+
+            // 调整每条边的起点/终点
+            for (int i = 0; i < edges.Count; i++)
+            {
+                int startVertex = i;
+                int endVertex   = (i + 1) % n;
+
+                PolygonEdge e = edges[i];
+                if (corners[startVertex].valid) e.start = corners[startVertex].T_after;
+                if (corners[endVertex].valid)   e.end   = corners[endVertex].T_before;
+
+                Vector3 startXZ = new Vector3(e.start.x, 0f, e.start.z);
+                Vector3 endXZ   = new Vector3(e.end.x,   0f, e.end.z);
+                e.length = Vector3.Distance(startXZ, endXZ);
+                edges[i] = e;
+            }
+
+            // 重算累计周长
+            float cumulative = 0f;
+            for (int i = 0; i < edges.Count; i++)
+            {
+                var e = edges[i];
+                e.cumulativeStart = cumulative;
+                cumulative += e.length;
+                edges[i] = e;
+            }
+
+            return edges;
+        }
+
+        private static List<PolygonEdge> BuildEdgeListRaw(List<Vector3> points, bool isClosed)
         {
             List<PolygonEdge> edges = new List<PolygonEdge>();
             int n = points.Count;

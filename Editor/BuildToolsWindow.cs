@@ -1068,13 +1068,15 @@ namespace BuildTools
 
             System.Random rng = new System.Random(m_settings.placement.randomSeed);
 
-            // 生成放置位置（传入 Prefab 槽位以支持边缘到边缘间距计算）
+            // 生成放置位置（传入 Prefab 槽位 + 圆角半径以支持圆角后边线收缩）
+            float cornerR = m_settings.useRoundedCorners ? m_settings.cornerRadius : 0f;
             List<PlacementResult> placements = BuildToolsPlacement.GeneratePlacements(
                 m_settings.polygonPoints,
                 m_settings.isPolygonClosed,
                 m_settings.placement,
                 rng,
-                m_settings.prefabSlots
+                m_settings.prefabSlots,
+                cornerR
             );
 
             if (placements.Count == 0)
@@ -1397,7 +1399,7 @@ namespace BuildTools
 
         /// <summary>
         /// 绘制带圆角转折的多边形边线。
-        /// 在每个顶点处用圆弧替代尖角，半径受相邻边长约束。
+        /// 圆角数据由 BuildToolsPlacement.ComputeCornerTangents 统一计算。
         /// </summary>
         private void DrawRoundedPolygonEdges()
         {
@@ -1406,69 +1408,11 @@ namespace BuildTools
 
             List<Vector3> pts = m_settings.polygonPoints;
             bool closed = m_settings.isPolygonClosed;
-            float r = m_settings.cornerRadius;
-
             Handles.color = m_settings.polygonOutlineColor;
 
-            // 为每个顶点预计算圆角数据：切线点 T_before / T_after、圆弧圆心、半径
-            var corners = new (bool valid, Vector3 T_before, Vector3 T_after, Vector3 arcCenter, float arcR)[n];
-            for (int i = 0; i < n; i++)
-            {
-                if (closed || (i > 0 && i < n - 1)) // 仅内部顶点/闭合多边形的所有顶点
-                {
-                    int prev = (i - 1 + n) % n;
-                    int next = (i + 1) % n;
-
-                    Vector3 dIn = XZNormalized(pts[i] - pts[prev]);   // 入边方向（指向顶点）
-                    Vector3 dOut = XZNormalized(pts[next] - pts[i]); // 出边方向（离开顶点）
-
-                    // 限制半径不超过相邻边的一半
-                    float maxR = Mathf.Min(
-                        XZDistance(pts[prev], pts[i]) * 0.5f,
-                        XZDistance(pts[i], pts[next]) * 0.5f);
-                    float clampedR = Mathf.Min(r, maxR);
-
-                    if (clampedR > 0.001f)
-                    {
-                        // 根据转弯方向确定法向（左转→弧在左侧，右转→弧在右侧）
-                        // 2D cross: dIn.x * dOut.z - dIn.z * dOut.x
-                        float cross = dIn.x * dOut.z - dIn.z * dOut.x;
-
-                        Vector3 nIn, nOut;
-                        if (cross > 0.0001f) // 左转 → 逆时针法向
-                        {
-                            nIn  = new Vector3(-dIn.z,  0f, dIn.x);
-                            nOut = new Vector3(-dOut.z, 0f, dOut.x);
-                        }
-                        else if (cross < -0.0001f) // 右转 → 顺时针法向
-                        {
-                            nIn  = new Vector3(dIn.z,  0f, -dIn.x);
-                            nOut = new Vector3(dOut.z, 0f, -dOut.x);
-                        }
-                        else // 共线，无需圆角
-                        {
-                            continue;
-                        }
-
-                        // 偏移线交点 = 圆弧圆心
-                        // 入边偏移线: O = pts[i] - dIn * clampedR + nIn * clampedR + dIn * t  ...
-                        // 实际: O = pts[i] + dIn * t_in + nIn * clampedR
-                        //        O = pts[i] + dOut * t_out + nOut * clampedR
-                        // 其中 t_in, t_out 是未知参数
-                        Vector3 P_in = pts[i] + nIn * clampedR;
-                        Vector3 P_out = pts[i] + nOut * clampedR;
-
-                        // 求交点: P_in + dIn * t = P_out + dOut * s
-                        if (TryLineIntersectXZ(P_in, dIn, P_out, dOut, out Vector3 arcCenter, out float _, out float _))
-                        {
-                            Vector3 T_before = arcCenter - nIn * clampedR;
-                            Vector3 T_after = arcCenter - nOut * clampedR;
-
-                            corners[i] = (true, T_before, T_after, arcCenter, clampedR);
-                        }
-                    }
-                }
-            }
+            // 使用与放置算法共享的圆角计算
+            List<BuildToolsPlacement.CornerTangentInfo> corners =
+                BuildToolsPlacement.ComputeCornerTangents(pts, closed, m_settings.cornerRadius);
 
             // 绘制线段 + 圆弧
             int edgeCount = closed ? n : n - 1;
@@ -1477,23 +1421,16 @@ namespace BuildTools
                 int curr = i;
                 int next = (i + 1) % n;
 
-                // 从上一顶点弧的终点（若无弧则为顶点本身）
                 Vector3 segStart = corners[curr].valid ? corners[curr].T_after : pts[curr];
-                // 到下一顶点弧的起点（若无弧则为顶点本身）
-                Vector3 segEnd = corners[next].valid ? corners[next].T_before : pts[next];
+                Vector3 segEnd   = corners[next].valid ? corners[next].T_before : pts[next];
 
-                // 绘制直线段（确保不反向）
-                if (Vector3.Dot(XZNormalized(segEnd - segStart), XZNormalized(pts[next] - pts[curr])) >= 0f
-                    && XZSqrDistance(segStart, segEnd) > 0.0001f)
-                {
+                if (XZSqrDistance(segStart, segEnd) > 0.0001f)
                     Handles.DrawAAPolyLine(4f, segStart, segEnd);
-                }
 
-                // 在 next 顶点处绘制圆弧
                 if (corners[next].valid)
                 {
                     var c = corners[next];
-                    DrawWireArcXZ(c.arcCenter, c.arcR, c.T_before, c.T_after);
+                    DrawWireArcXZ(c.arcCenter, c.radius, c.T_before, c.T_after);
                 }
             }
         }
