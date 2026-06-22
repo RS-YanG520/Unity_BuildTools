@@ -19,19 +19,26 @@ namespace BuildTools
     }
 
     /// <summary>
-    /// 多边形的一条边
+    /// 多边形的一条边（直线段或圆弧段）
     /// </summary>
     internal struct PolygonEdge
     {
         public int index;
         public Vector3 start;
         public Vector3 end;
-        public float length;           // XZ 平面上的长度
-        public Vector3 direction;      // XZ 平面上的单位方向
+        public float length;           // XZ 平面上的长度（弧段为弧长）
+        public Vector3 direction;      // XZ 平面上的单位方向（直线=沿边，弧=起点切线）
         public float cumulativeStart;  // 累计周长起点
 
         /// <summary>边缘在 XZ 平面上的内向法线（指向多边形内部）</summary>
         public Vector3 inwardNormal;
+
+        // ── 圆弧专用 ──
+        public bool isArc;
+        public Vector3 arcCenter;
+        public Vector3 arcFromDir;       // 从圆心到弧起点的方向（XZ）
+        public float arcAngleDegrees;    // 弧扫掠角度（正=逆时针，负=顺时针）
+        public float arcRadius;
     }
 
     // ============================================================
@@ -96,6 +103,33 @@ namespace BuildTools
             }
         }
 
+        // ============================================================
+        // 边上的采样（兼容直线和圆弧）
+        // ============================================================
+
+        private static void GetPointOnEdge(PolygonEdge edge, float tNorm,
+            out Vector3 position, out Vector3 tangent, out Vector3 normal)
+        {
+            tNorm = Mathf.Clamp01(tNorm);
+            if (edge.isArc)
+            {
+                float angle = edge.arcAngleDegrees * tNorm;
+                Vector3 dir = Quaternion.Euler(0f, angle, 0f) * edge.arcFromDir;
+                position = edge.arcCenter + dir * edge.arcRadius;
+                if (edge.arcAngleDegrees >= 0f)
+                    tangent = new Vector3(-dir.z, 0f, dir.x);
+                else
+                    tangent = new Vector3(dir.z, 0f, -dir.x);
+                normal = XZNormalized_Prv(edge.arcCenter - position);
+            }
+            else
+            {
+                position = Vector3.Lerp(edge.start, edge.end, tNorm);
+                tangent = edge.direction;
+                normal = edge.inwardNormal;
+            }
+        }
+
         /// <summary>
         /// 随机排列：沿边缘加权随机分布
         /// </summary>
@@ -119,15 +153,15 @@ namespace BuildTools
 
                     float tEdge = (float)rng.NextDouble() * edge.length;
                     float tNorm = edge.length > 0.001f ? tEdge / edge.length : 0f;
-                    Vector3 pos = Vector3.Lerp(edge.start, edge.end, tNorm);
+                    GetPointOnEdge(edge, tNorm, out Vector3 pos, out Vector3 tangent, out Vector3 normal);
 
                     float totalOffset = GetTotalEdgeOffset(settings, edge, avgHalfExtentPerp, settings.edgeOffset);
                     if (settings.randomizeEdgeOffset && settings.randomEdgeOffsetRange > 0.001f)
                         totalOffset += ((float)rng.NextDouble() * 2f - 1f) * settings.randomEdgeOffsetRange;
                     if (Mathf.Abs(totalOffset) > 0.001f)
-                        pos += edge.inwardNormal * totalOffset;
+                        pos += normal * totalOffset;
 
-                    Quaternion rotation = CalculateRotation(pos, edge, polygonPoints, settings, rng);
+                    Quaternion rotation = CalculateRotation(pos, edge, polygonPoints, settings, rng, tangent);
 
                     if (settings.minSpacing > 0.001f)
                     {
@@ -197,14 +231,14 @@ namespace BuildTools
                 var (edge, edgeIndex, tNorm) = LocateOnEdges(edges, distAlongPerimeter);
                 if (edgeIndex < 0) continue;
 
-                Vector3 pos = Vector3.Lerp(edge.start, edge.end, tNorm);
+                GetPointOnEdge(edge, tNorm, out Vector3 pos, out Vector3 tangent, out Vector3 normal);
                 float totalOffset = GetTotalEdgeOffset(settings, edge, avgHalfExtentPerp, settings.edgeOffset);
                 if (settings.randomizeEdgeOffset && settings.randomEdgeOffsetRange > 0.001f)
                     totalOffset += ((float)rng.NextDouble() * 2f - 1f) * settings.randomEdgeOffsetRange;
                 if (Mathf.Abs(totalOffset) > 0.001f)
-                    pos += edge.inwardNormal * totalOffset;
+                    pos += normal * totalOffset;
 
-                Quaternion rotation = CalculateRotation(pos, edge, polygonPoints, settings, rng);
+                Quaternion rotation = CalculateRotation(pos, edge, polygonPoints, settings, rng, tangent);
 
                 if (settings.minSpacing > 0.001f && !MeetsSpacingRequirement(pos, results, settings.minSpacing))
                     continue;
@@ -285,14 +319,14 @@ namespace BuildTools
                 var (edge, edgeIndex, tNorm) = LocateOnEdges(edges, distFromStart);
                 if (edgeIndex < 0) break;
 
-                Vector3 pos = Vector3.Lerp(edge.start, edge.end, tNorm);
+                GetPointOnEdge(edge, tNorm, out Vector3 pos, out Vector3 tangent, out Vector3 normal);
                 float totalOffset = GetTotalEdgeOffset(settings, edge, curHalfExtentPerp, settings.edgeOffset);
                 if (settings.randomizeEdgeOffset && settings.randomEdgeOffsetRange > 0.001f)
                     totalOffset += ((float)rng.NextDouble() * 2f - 1f) * settings.randomEdgeOffsetRange;
                 if (Mathf.Abs(totalOffset) > 0.001f)
-                    pos += edge.inwardNormal * totalOffset;
+                    pos += normal * totalOffset;
 
-                Quaternion rotation = CalculateRotation(pos, edge, polygonPoints, settings, rng);
+                Quaternion rotation = CalculateRotation(pos, edge, polygonPoints, settings, rng, tangent);
 
                 if (settings.minSpacing > 0.001f && !MeetsSpacingRequirement(pos, results, settings.minSpacing))
                     continue;
@@ -576,40 +610,103 @@ namespace BuildTools
 
         private static List<PolygonEdge> BuildEdgeList(List<Vector3> points, bool isClosed, float cornerRadius = 0f)
         {
-            // 先用原始顶点构建边列表
-            List<PolygonEdge> edges = BuildEdgeListRaw(points, isClosed);
-            if (edges.Count == 0) return edges;
-
-            if (cornerRadius < 0.001f || points.Count < 3) return edges;
+            if (cornerRadius < 0.001f || points.Count < 3)
+                return BuildEdgeListRaw(points, isClosed);
 
             // 计算圆角切线
             List<CornerTangentInfo> corners = ComputeCornerTangents(points, isClosed, cornerRadius);
             int n = points.Count;
+            int edgeCount = isClosed ? n : n - 1;
+            if (edgeCount <= 0) return new List<PolygonEdge>();
 
-            // 调整每条边的起点/终点
-            for (int i = 0; i < edges.Count; i++)
+            // 生成直线段 + 弧段交错的边列表
+            List<PolygonEdge> edges = new List<PolygonEdge>();
+            float cumulative = 0f;
+            int edgeIdx = 0;
+
+            for (int i = 0; i < edgeCount; i++)
             {
                 int startVertex = i;
                 int endVertex   = (i + 1) % n;
 
-                PolygonEdge e = edges[i];
-                if (corners[startVertex].valid) e.start = corners[startVertex].T_after;
-                if (corners[endVertex].valid)   e.end   = corners[endVertex].T_before;
+                // ── 直线段：T_after(i) → T_before(i+1) ──
+                Vector3 segStart = corners[startVertex].valid ? corners[startVertex].T_after  : points[startVertex];
+                Vector3 segEnd   = corners[endVertex].valid   ? corners[endVertex].T_before   : points[endVertex];
 
-                Vector3 startXZ = new Vector3(e.start.x, 0f, e.start.z);
-                Vector3 endXZ   = new Vector3(e.end.x,   0f, e.end.z);
-                e.length = Vector3.Distance(startXZ, endXZ);
-                edges[i] = e;
-            }
+                Vector3 segStartXZ = new Vector3(segStart.x, 0f, segStart.z);
+                Vector3 segEndXZ   = new Vector3(segEnd.x,   0f, segEnd.z);
+                float segLen = Vector3.Distance(segStartXZ, segEndXZ);
 
-            // 重算累计周长
-            float cumulative = 0f;
-            for (int i = 0; i < edges.Count; i++)
-            {
-                var e = edges[i];
-                e.cumulativeStart = cumulative;
-                cumulative += e.length;
-                edges[i] = e;
+                if (segLen > 0.0001f)
+                {
+                    Vector3 segDir = (segEndXZ - segStartXZ).normalized;
+                    // 使用原始边的内向法线
+                    Vector3 segNormal = new Vector3(segDir.z, 0f, -segDir.x);
+
+                    // 确认法向指向多边形内部
+                    Vector3 mid = (segStartXZ + segEndXZ) * 0.5f;
+                    // 用多边形顶点平均中心判断
+                    Vector3 center = Vector3.zero;
+                    for (int k = 0; k < n; k++) center += points[k];
+                    center /= n;
+                    Vector3 toCenter = XZNormalized_Prv(new Vector3(center.x - mid.x, 0f, center.z - mid.z));
+                    if (Vector3.Dot(segNormal, toCenter) < 0f)
+                        segNormal = -segNormal;
+
+                    edges.Add(new PolygonEdge
+                    {
+                        index = edgeIdx++,
+                        start = segStart,
+                        end = segEnd,
+                        length = segLen,
+                        direction = segDir,
+                        cumulativeStart = cumulative,
+                        inwardNormal = segNormal,
+                        isArc = false
+                    });
+                    cumulative += segLen;
+                }
+
+                // ── 弧段（endVertex 处的圆角）──
+                if (corners[endVertex].valid)
+                {
+                    var c = corners[endVertex];
+                    Vector3 fromDir = XZNormalized_Prv(c.T_before - c.arcCenter);
+                    Vector3 toDir   = XZNormalized_Prv(c.T_after  - c.arcCenter);
+                    float arcAngle = Vector3.SignedAngle(fromDir, toDir, Vector3.up);
+                    float arcLen = c.radius * Mathf.Abs(arcAngle) * Mathf.Deg2Rad;
+
+                    if (arcLen > 0.0001f)
+                    {
+                        // 弧的初切线方向
+                        Vector3 arcTangent;
+                        if (arcAngle >= 0f)
+                            arcTangent = new Vector3(-fromDir.z, 0f, fromDir.x);
+                        else
+                            arcTangent = new Vector3(fromDir.z, 0f, -fromDir.x);
+
+                        // 弧的内向法线：从弧面指向圆心
+                        Vector3 arcMidPt = c.arcCenter + Quaternion.Euler(0f, arcAngle * 0.5f, 0f) * fromDir * c.radius;
+                        Vector3 arcNormal = XZNormalized_Prv(c.arcCenter - arcMidPt);
+
+                        edges.Add(new PolygonEdge
+                        {
+                            index = edgeIdx++,
+                            start = c.T_before,
+                            end = c.T_after,
+                            length = arcLen,
+                            direction = arcTangent,
+                            cumulativeStart = cumulative,
+                            inwardNormal = arcNormal,
+                            isArc = true,
+                            arcCenter = c.arcCenter,
+                            arcFromDir = fromDir,
+                            arcAngleDegrees = arcAngle,
+                            arcRadius = c.radius
+                        });
+                        cumulative += arcLen;
+                    }
+                }
             }
 
             return edges;
@@ -716,9 +813,13 @@ namespace BuildTools
             PolygonEdge edge,
             List<Vector3> polygonPoints,
             PlacementSettings settings,
-            System.Random rng)
+            System.Random rng,
+            Vector3 edgeTangent = default)
         {
             Vector3 forward;
+
+            // 若未传入切线，退化为边方向
+            Vector3 tangent = edgeTangent.sqrMagnitude > 0.0001f ? edgeTangent : edge.direction;
 
             switch (settings.orientationMode)
             {
@@ -734,8 +835,8 @@ namespace BuildTools
                     break;
 
                 case OrientationMode.AlongEdge:
-                    // 沿边缘方向 + 可调旋转偏移
-                    forward = edge.direction;
+                    // 沿边缘方向（弧段使用采样点的切线）
+                    forward = tangent;
                     if (Mathf.Abs(settings.edgeRotationOffset) > 0.01f)
                         forward = Quaternion.Euler(0f, settings.edgeRotationOffset, 0f) * forward;
                     break;
