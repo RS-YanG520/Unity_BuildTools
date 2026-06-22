@@ -12,49 +12,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5bb0126a9bf16d4e93f276da7852c6d, type: 3}
   m_Name: BuildToolsSettings
   m_EditorClassIdentifier: 
-  polygonPoints:
-  - {x: -120.820656, y: 0, z: -350.93036}
-  - {x: 210.6055, y: 0, z: -210.25903}
-  - {x: 317.67722, y: 0, z: -249.99759}
-  - {x: -179.52173, y: 0, z: -525.19885}
-  isPolygonClosed: 1
-  prefabSlots:
-  - prefab: {fileID: 6156336770668686741, guid: 635ee8c7f9aeb3f42a49fd5b7194acbb, type: 3}
-    weight: 1
-    enabled: 1
-  - prefab: {fileID: 8673549340797833884, guid: 63b725d0719150c42bf6fb4eea72e60b, type: 3}
-    weight: 1
-    enabled: 1
-  - prefab: {fileID: 8892215759493524774, guid: 1fad2bd19a40ad04092451ec9dac0045, type: 3}
-    weight: 1
-    enabled: 1
-  - prefab: {fileID: 6381954254294609691, guid: d7f2de47475c80b4fa805f457ab04b9a, type: 3}
-    weight: 1
-    enabled: 1
-  - prefab: {fileID: 3105137773288774552, guid: e18997dacff86ec49966f0c7d222e139, type: 3}
-    weight: 1
-    enabled: 1
-  - prefab: {fileID: 4634080353049345348, guid: 324d8e21fc284eb4ab14be3e00485762, type: 3}
-    weight: 1
-    enabled: 1
-  - prefab: {fileID: 4438044692216399284, guid: c6df5acf8dc85e04eab718701b791da9, type: 3}
-    weight: 1
-    enabled: 1
-  - prefab: {fileID: 5988482682356239027, guid: 52971a0525271cc4398fab5615436a64, type: 3}
-    weight: 1
-    enabled: 1
+  polygonPoints: []
+  isPolygonClosed: 0
+  prefabSlots: []
   placement:
     placementMode: 0
-    buildingCount: 42
+    buildingCount: 68
     spacing: 0
-    randomSeed: 454916
-    edgeOffset: -4.92
-    randomizeEdgeOffset: 0
-    randomEdgeOffsetRange: 0
+    randomSeed: 785035
+    edgeOffset: 0
+    randomizeEdgeOffset: 1
+    randomEdgeOffsetRange: 2
     minSpacing: 0
     orientationMode: 1
     worldDirection: {x: 0, y: 0, z: 1}
-    edgeRotationOffset: -82.4
+    edgeRotationOffset: -90
     edgeAlignment: 0
     randomizeRotation: 0
     randomRotationRange: 15
@@ -67,6 +39,8 @@ MonoBehaviour:
   pointHandleColor: {r: 0, g: 1, b: 0, a: 1}
   pointHandleSize: 0.3
   previewLineColor: {r: 1, g: 1, b: 1, a: 0.4}
+  useRoundedCorners: 1
+  cornerRadius: 22.7
   paintLayers:
     serializedVersion: 2
     m_Bits: 4294967295
