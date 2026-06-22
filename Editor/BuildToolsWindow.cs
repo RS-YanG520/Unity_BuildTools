@@ -1461,7 +1461,7 @@ namespace BuildTools
                         // 求交点: P_in + dIn * t = P_out + dOut * s
                         if (TryLineIntersectXZ(P_in, dIn, P_out, dOut, out Vector3 arcCenter, out float _, out float _))
                         {
-                            Vector3 T_before = archCenter - nIn * clampedR;
+                            Vector3 T_before = arcCenter - nIn * clampedR;
                             Vector3 T_after = arcCenter - nOut * clampedR;
 
                             corners[i] = (true, T_before, T_after, arcCenter, clampedR);
