@@ -109,6 +109,8 @@ namespace BuildTools
                     Vector3 pos = Vector3.Lerp(edge.start, edge.end, tNorm);
 
                     float totalOffset = GetTotalEdgeOffset(settings, edge, avgHalfExtentPerp, settings.edgeOffset);
+                    if (settings.randomizeEdgeOffset && settings.randomEdgeOffsetRange > 0.001f)
+                        totalOffset += ((float)rng.NextDouble() * 2f - 1f) * settings.randomEdgeOffsetRange;
                     if (Mathf.Abs(totalOffset) > 0.001f)
                         pos += edge.inwardNormal * totalOffset;
 
@@ -184,6 +186,8 @@ namespace BuildTools
 
                 Vector3 pos = Vector3.Lerp(edge.start, edge.end, tNorm);
                 float totalOffset = GetTotalEdgeOffset(settings, edge, avgHalfExtentPerp, settings.edgeOffset);
+                if (settings.randomizeEdgeOffset && settings.randomEdgeOffsetRange > 0.001f)
+                    totalOffset += ((float)rng.NextDouble() * 2f - 1f) * settings.randomEdgeOffsetRange;
                 if (Mathf.Abs(totalOffset) > 0.001f)
                     pos += edge.inwardNormal * totalOffset;
 
@@ -270,6 +274,8 @@ namespace BuildTools
 
                 Vector3 pos = Vector3.Lerp(edge.start, edge.end, tNorm);
                 float totalOffset = GetTotalEdgeOffset(settings, edge, curHalfExtentPerp, settings.edgeOffset);
+                if (settings.randomizeEdgeOffset && settings.randomEdgeOffsetRange > 0.001f)
+                    totalOffset += ((float)rng.NextDouble() * 2f - 1f) * settings.randomEdgeOffsetRange;
                 if (Mathf.Abs(totalOffset) > 0.001f)
                     pos += edge.inwardNormal * totalOffset;
 

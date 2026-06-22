@@ -639,6 +639,28 @@ namespace BuildTools
                     EditorUtility.SetDirty(m_settings);
                 }
 
+                // 随机边缘偏移
+                EditorGUI.BeginChangeCheck();
+                bool newRandOffset = EditorGUILayout.Toggle("随机边缘偏移", ps.randomizeEdgeOffset);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    RegisterSettingsUndo();
+                    ps.randomizeEdgeOffset = newRandOffset;
+                    EditorUtility.SetDirty(m_settings);
+                }
+
+                if (ps.randomizeEdgeOffset)
+                {
+                    EditorGUI.BeginChangeCheck();
+                    float newRandRange = EditorGUILayout.FloatField("随机偏移范围 (±)", ps.randomEdgeOffsetRange);
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        RegisterSettingsUndo();
+                        ps.randomEdgeOffsetRange = Mathf.Max(0f, newRandRange);
+                        EditorUtility.SetDirty(m_settings);
+                    }
+                }
+
                 // 最小间距
                 EditorGUI.BeginChangeCheck();
                 float newSpacing = EditorGUILayout.FloatField("最小间距", ps.minSpacing);

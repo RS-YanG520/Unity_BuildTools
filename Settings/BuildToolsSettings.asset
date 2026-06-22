@@ -13,25 +13,48 @@ MonoBehaviour:
   m_Name: BuildToolsSettings
   m_EditorClassIdentifier: 
   polygonPoints:
-  - {x: -68.98651, y: 0, z: -83.20961}
-  - {x: 117.87186, y: 0, z: -20.975708}
-  - {x: 140.14937, y: 0, z: -100.85146}
-  - {x: -45.53363, y: 0, z: -213.4967}
+  - {x: -120.820656, y: 0, z: -350.93036}
+  - {x: 210.6055, y: 0, z: -210.25903}
+  - {x: 317.67722, y: 0, z: -249.99759}
+  - {x: -179.52173, y: 0, z: -525.19885}
   isPolygonClosed: 1
   prefabSlots:
+  - prefab: {fileID: 6156336770668686741, guid: 635ee8c7f9aeb3f42a49fd5b7194acbb, type: 3}
+    weight: 1
+    enabled: 1
+  - prefab: {fileID: 8673549340797833884, guid: 63b725d0719150c42bf6fb4eea72e60b, type: 3}
+    weight: 1
+    enabled: 1
+  - prefab: {fileID: 8892215759493524774, guid: 1fad2bd19a40ad04092451ec9dac0045, type: 3}
+    weight: 1
+    enabled: 1
+  - prefab: {fileID: 6381954254294609691, guid: d7f2de47475c80b4fa805f457ab04b9a, type: 3}
+    weight: 1
+    enabled: 1
+  - prefab: {fileID: 3105137773288774552, guid: e18997dacff86ec49966f0c7d222e139, type: 3}
+    weight: 1
+    enabled: 1
+  - prefab: {fileID: 4634080353049345348, guid: 324d8e21fc284eb4ab14be3e00485762, type: 3}
+    weight: 1
+    enabled: 1
   - prefab: {fileID: 4438044692216399284, guid: c6df5acf8dc85e04eab718701b791da9, type: 3}
     weight: 1
     enabled: 1
+  - prefab: {fileID: 5988482682356239027, guid: 52971a0525271cc4398fab5615436a64, type: 3}
+    weight: 1
+    enabled: 1
   placement:
-    placementMode: 2
-    buildingCount: 16
+    placementMode: 0
+    buildingCount: 42
     spacing: 0
-    randomSeed: 358867
-    edgeOffset: 0
+    randomSeed: 454916
+    edgeOffset: -4.92
+    randomizeEdgeOffset: 0
+    randomEdgeOffsetRange: 0
     minSpacing: 0
     orientationMode: 1
     worldDirection: {x: 0, y: 0, z: 1}
-    edgeRotationOffset: -90
+    edgeRotationOffset: -82.4
     edgeAlignment: 0
     randomizeRotation: 0
     randomRotationRange: 15

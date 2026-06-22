@@ -90,6 +90,13 @@ namespace BuildTools
         [Tooltip("边缘偏移距离（正数=向内偏移，负数=向外偏移）")]
         public float edgeOffset = 0f;
 
+        [Tooltip("是否在边缘偏移基础上叠加随机偏移")]
+        public bool randomizeEdgeOffset = false;
+
+        [Tooltip("随机边缘偏移范围（±值，叠加在基础偏移之上）")]
+        [Min(0f)]
+        public float randomEdgeOffsetRange = 0f;
+
         [Tooltip("建筑之间的最小间距（0 = 不检测）")]
         [Min(0f)]
         public float minSpacing = 0f;
