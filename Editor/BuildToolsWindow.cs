@@ -469,6 +469,9 @@ namespace BuildTools
             {
                 EditorGUI.indentLevel++;
 
+                // ── 拖拽批量添加 Prefab ──
+                DrawPrefabDropZone();
+
                 int deleteSlot = -1;
 
                 for (int i = 0; i < m_settings.prefabSlots.Count; i++)
@@ -548,6 +551,90 @@ namespace BuildTools
                 EditorGUI.indentLevel--;
             }
             EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        // --------------------------------------------------------
+        // Prefab Drop Zone（拖拽批量添加）
+        // --------------------------------------------------------
+
+        private void DrawPrefabDropZone()
+        {
+            Rect dropArea = GUILayoutUtility.GetRect(0f, 38f, GUILayout.ExpandWidth(true));
+            Event evt = Event.current;
+
+            // 统计拖拽中的有效 Prefab 数量
+            int prefabCount = 0;
+            bool isDraggingOver = dropArea.Contains(evt.mousePosition);
+
+            if (isDraggingOver && (evt.type == EventType.DragUpdated || evt.type == EventType.DragPerform))
+            {
+                foreach (var obj in DragAndDrop.objectReferences)
+                {
+                    if (obj is GameObject)
+                        prefabCount++;
+                }
+            }
+
+            // 处理拖拽事件
+            if (isDraggingOver)
+            {
+                switch (evt.type)
+                {
+                    case EventType.DragUpdated:
+                        DragAndDrop.visualMode = prefabCount > 0
+                            ? DragAndDropVisualMode.Copy
+                            : DragAndDropVisualMode.Rejected;
+                        evt.Use();
+                        break;
+
+                    case EventType.DragPerform:
+                        if (prefabCount > 0)
+                        {
+                            DragAndDrop.AcceptDrag();
+                            RegisterSettingsUndo("BT: Batch Add Prefab Slots");
+                            foreach (var obj in DragAndDrop.objectReferences)
+                            {
+                                if (obj is GameObject prefab)
+                                {
+                                    m_settings.prefabSlots.Add(new PrefabSlot(prefab, 1f, true));
+                                }
+                            }
+                            EditorUtility.SetDirty(m_settings);
+                            Repaint();
+                        }
+                        evt.Use();
+                        break;
+                }
+            }
+
+            // 绘制区域背景 + 边框
+            Color bgColor = isDraggingOver && prefabCount > 0
+                ? new Color(0.3f, 0.7f, 0.3f, 0.35f)
+                : new Color(0.45f, 0.45f, 0.45f, 0.2f);
+
+            Color restoreColor = GUI.color;
+            GUI.color = bgColor;
+            GUI.Box(dropArea, "", GUI.skin.box);
+            GUI.color = restoreColor;
+
+            // 文字提示
+            string hintText;
+            if (isDraggingOver && prefabCount > 0)
+                hintText = $"释放鼠标添加 {prefabCount} 个 Prefab 槽位";
+            else
+                hintText = "📁 从 Project 视图拖拽 Prefab 到此处，自动批量添加槽位";
+
+            GUIStyle labelStyle = new GUIStyle(EditorStyles.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                wordWrap = true,
+                normal = { textColor = isDraggingOver && prefabCount > 0
+                    ? new Color(0.2f, 0.7f, 0.2f)
+                    : new Color(0.6f, 0.6f, 0.6f) }
+            };
+            GUI.Label(dropArea, hintText, labelStyle);
+
+            EditorGUILayout.Space(2f);
         }
 
         // --------------------------------------------------------
